@@ -12,3 +12,4 @@ python-multipart
 httpx
 python-dotenv
 requests
+psycopg2-binary
