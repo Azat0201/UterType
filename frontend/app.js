@@ -2,219 +2,371 @@
    TypeMaster — static/app.js
    ============================================================ */
 
-const TEXTS = [
-  "The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs. How vexingly quick daft zebras jump.",
-  "Programming is the art of telling another human what one wants the computer to do. Code is like humor: when you have to explain it, it is bad.",
-  "In the beginning was the word, and the word was typed at sixty characters per second by a developer who had forgotten to eat lunch.",
-  "To be or not to be, that is the question. Whether it is nobler in the mind to suffer the slings and arrows of outrageous fortune.",
-  "The only way to do great work is to love what you do. If you have not found it yet, keep looking. Do not settle.",
-  "Simplicity is the ultimate sophistication. It takes a lot of hard work to make something simple and come up with elegant solutions.",
-];
-
+/* ── State ── */
 let state = {
-  text: '',
-  typed: [],      // [{char, correct}, ...]
-  started: false,
-  finished: false,
-  startTime: null,
-  errors: 0,
-  timerInterval: null,
-  currentToken: null,
-  currentUser: null,
+  text:'', typed:[], started:false, finished:false,
+  startTime:null, errors:0, timerInterval:null,
+  currentToken:null, currentUser:null, prevMaxSpeed:0,
+  cursorPos: 0, // позиция курсора в тексте¶
 };
 
-// DOM refs
+/* ── LED state ── */
+const leds = { caps:false, num:true, scroll:false };
+
+/* ── Sound ── */
+let audioCtx = null;
+let soundOn  = true;
+let volume   = 0.6;
+let pressedKeys = new Set();
+
+function getAudioCtx(){
+  if(!audioCtx) audioCtx = new(window.AudioContext||window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playKeySound(){
+  if(!soundOn) return;
+  try{
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = 800;
+    const oscGain = ctx.createGain();
+    oscGain.gain.value = volume * 0.15;
+    oscGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.01);
+    osc.connect(oscGain);
+    oscGain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.01);
+    
+  }catch(e){}
+}
+
+/* ── DOM refs ── */
 const textDisplay  = document.getElementById('textDisplay');
 const liveSpeed    = document.getElementById('liveSpeed');
 const liveAccuracy = document.getElementById('liveAccuracy');
 const liveErrors   = document.getElementById('liveErrors');
 const liveTime     = document.getElementById('liveTime');
-const liveProgress = document.getElementById('liveProgress');
 const typingStatus = document.getElementById('typingStatus');
-const resultCard   = document.getElementById('resultCard');
+const recordBadge  = document.getElementById('recordBadge');
 const modalOverlay = document.getElementById('modalOverlay');
 const authModal    = document.getElementById('authModal');
 const statsModal   = document.getElementById('statsModal');
 const authArea     = document.getElementById('authArea');
 const userArea     = document.getElementById('userArea');
+const ledCapsEl    = document.getElementById('ledCaps');
+const ledNumEl     = document.getElementById('ledNum');
+const ledScrollEl  = document.getElementById('ledScroll');
 
+/* ── Flag: modal is open — blocks typing ── */
+let modalOpen = false;
+
+/* ── Init ── */
 document.addEventListener('DOMContentLoaded', () => {
+  if(leds.num) ledNumEl.classList.add('on');
+
   checkTokenInUrl();
   loadUserFromStorage();
   startNewTest();
-  setupEvents();
-});
 
-function setupEvents() {
-  document.addEventListener('keydown', onGlobalKeyDown);
-  document.addEventListener('keyup',   onGlobalKeyUp);
-  textDisplay.addEventListener('click', () => textDisplay.focus());
+  document.addEventListener('keydown', handleKeyDown);
+  document.addEventListener('keyup',   handleKeyUp);
+
+  textDisplay.addEventListener('click', () => { if(!modalOpen) textDisplay.focus(); });
   document.getElementById('btnRestart').addEventListener('click', startNewTest);
-  document.getElementById('btnNewTest').addEventListener('click', startNewTest);
   document.getElementById('modalClose').addEventListener('click', closeModal);
   document.getElementById('statsClose').addEventListener('click', closeModal);
   document.getElementById('btnLogout').addEventListener('click', logout);
-  document.getElementById('btnLogin').addEventListener('click', () => openAuthModal('login'));
+  document.getElementById('btnLogin').addEventListener('click',    () => openAuthModal('login'));
   document.getElementById('btnRegister').addEventListener('click', () => openAuthModal('register'));
   document.getElementById('btnStats').addEventListener('click', openStatsModal);
   document.getElementById('doLogin').addEventListener('click', doLogin);
   document.getElementById('doRegister').addEventListener('click', doRegister);
-  modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
+  modalOverlay.addEventListener('click', e => { if(e.target===modalOverlay) closeModal(); });
+
+  /* Sound toggle */
+  const soundBtn  = document.getElementById('soundToggle');
+  const volSlider = document.getElementById('volumeSlider');
+  soundBtn.addEventListener('click', () => {
+    soundOn = !soundOn;
+    soundBtn.textContent = soundOn ? '🔊' : '🔇';
+    soundBtn.classList.toggle('muted', !soundOn);
+  });
+  volSlider.addEventListener('input', e => {
+    volume = e.target.value / 100;
+    if(volume>0 && !soundOn){ soundOn=true; soundBtn.textContent='🔊'; soundBtn.classList.remove('muted'); }
+  });
+});
+
+async function fetchRandomText() {
+  try {
+    const response = await fetch('/text/random');
+    if (response.ok) {
+      const data = await response.json();
+      return data.text;
+    }
+  } catch (e) {
+    console.warn('Failed to fetch text from API:', e);
+  }
+  return "ошибка";
 }
 
-// ── Test ──────────────────────────────────────────────────
-function startNewTest() {
-  if (state.timerInterval) clearInterval(state.timerInterval);
-  state.text      = TEXTS[Math.floor(Math.random() * TEXTS.length)];
-  state.typed     = [];
-  state.started   = false;
-  state.finished  = false;
-  state.startTime = null;
-  state.errors    = 0;
-  resultCard.style.display = 'none';
-  renderText();
-  updateLiveStats();
-  typingStatus.textContent = 'Нажмите любую клавишу, чтобы начать';
+/* ══════════════════════════════════════════════════════════
+   KEYDOWN — single handler, no duplicates
+   ══════════════════════════════════════════════════════════ */
+function handleKeyDown(e) {
+  if(!pressedKeys.has(e.code) & !modalOpen) playKeySound();;
+  pressedKeys.add(e.code);
+  
+  /* Lock LEDs */
+  if(e.key==='CapsLock')  { leds.caps=!leds.caps;    ledCapsEl.classList.toggle('on',leds.caps); }
+  if(e.key==='NumLock')   { leds.num=!leds.num;      ledNumEl.classList.toggle('on',leds.num);   }
+  if(e.key==='ScrollLock'){ leds.scroll=!leds.scroll; ledScrollEl.classList.toggle('on',leds.scroll); }
+
+  /* Modal is open — only handle Escape to close, nothing else */
+  if(modalOpen){
+    if(e.key==='Escape') closeModal();
+    if(e.target.tagName==='INPUT') return;
+    return;
+  }
+  
+   if(state.started && !state.finished){
+    if(e.key==='ArrowLeft'){
+      e.preventDefault();
+      if(state.cursorPos > 0){
+        state.cursorPos--;
+        // Пересчитываем ошибки при перемещении
+        recalcErrors();
+        renderText(); updateLiveStats();
+      }
+      return;
+    }
+    if(e.key==='ArrowRight'){
+      e.preventDefault();
+      if(state.cursorPos < state.typed.length){
+        state.cursorPos++;
+        recalcErrors();
+        renderText(); updateLiveStats();
+      }
+      return;
+    }
+    if(e.key==='ArrowUp'){
+      e.preventDefault();
+      // Переход на начало слова
+      const textBefore = state.text.substring(0, state.cursorPos);
+      const lastSpace = textBefore.lastIndexOf(' ');
+      state.cursorPos = lastSpace >= 0 ? lastSpace + 1 : 0;
+      recalcErrors();
+      renderText(); updateLiveStats();
+      return;
+    }
+    if(e.key==='ArrowDown'){
+      e.preventDefault();
+      // Переход на конец слова
+      const textAfter = state.text.substring(state.cursorPos);
+      const nextSpace = textAfter.indexOf(' ');
+      if(nextSpace >= 0){
+        state.cursorPos += nextSpace + 1;
+      } else {
+        state.cursorPos = state.text.length;
+      }
+      recalcErrors();
+      renderText(); updateLiveStats();
+      return;
+    }
+  }
+
+  /* Tab = restart */
+  if(e.key==='Tab'){e.preventDefault(); startNewTest(); setTimeout(() => {return;}, 1);}
+
+  /* Backspace */
+  if(e.key==='Backspace'){
+    e.preventDefault();
+    if(state.typed.length > 0 && state.cursorPos > 0){
+      const removed = state.typed.splice(state.cursorPos - 1, 1)[0];
+      state.cursorPos--;
+      recalcErrors();
+      pressKey('Backspace', false);
+      renderText(); updateLiveStats();
+    }
+    pressKey('Backspace', false);
+    renderText(); updateLiveStats();
+    return;
+  }
+
+  if(e.key==='Delete'){
+    e.preventDefault();
+    if(state.cursorPos < state.typed.length){
+      state.typed.splice(state.cursorPos, 1);
+      recalcErrors();
+      renderText(); updateLiveStats();
+    }
+    return;
+  }
+
+  if(e.key==='Home'){
+    e.preventDefault();
+    state.cursorPos = 0;
+    renderText(); updateLiveStats();
+    return;
+  }
+
+  /* End — в конец */
+  if(e.key==='End'){
+    e.preventDefault();
+    state.cursorPos = state.typed.length;
+    renderText(); updateLiveStats();
+    return;
+  }
+
+  /* Printable char */
+  if(e.key.length===1 && !e.ctrlKey && !e.altKey && !e.metaKey){
+    e.preventDefault();
+    if(!state.started){
+      state.started   = true;
+      state.startTime = Date.now();
+      typingStatus.textContent = 'Идёт тест...';
+      state.timerInterval = setInterval(updateLiveStats, 50);
+    }
+    const idx = state.cursorPos;
+    const correct = (e.key === state.text[idx]);
+
+    // Вставляем символ на позицию курсора
+    state.typed.splice(state.cursorPos, 0, {char: e.key, correct: correct});
+    state.cursorPos++;
+
+    recalcErrors();
+    pressKey(e.code, !correct);
+    renderText(); updateLiveStats();
+
+    if(state.typed.length >= state.text.length) finishTest();
+    return;
+  }
+  pressKey(e.code, false);
+}
+
+function handleKeyUp(e){ 
+  pressedKeys.delete(e.code);
+  releaseKey(e.code); 
+}
+
+/* Пересчёт ошибок после изменения текста */
+function recalcErrors(){
+  state.errors = 0;
+  for(let i = 0; i < state.typed.length; i++){
+    const typed = state.typed[i];
+    const expected = state.text[i];
+    typed.correct = (typed.char === expected);
+    if(!typed.correct) state.errors++;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   TEST
+   ══════════════════════════════════════════════════════════ */
+function startNewTest(){
+  if(state.timerInterval) clearInterval(state.timerInterval);
+    typingStatus.textContent = 'Загрузка текста...';
+    fetchRandomText().then(text => {
+    // Этот код выполнится ТОЛЬКО тогда, когда бэкэнд вернет ответ
+    state.text = text;
+    console.log("Текст получен через .then:", state.text);
+    
+    // 3. ОТРИСОВЫВАЕМ ТЕКСТ СТРОГО ТУТ (когда он уже записан в state.text)
+    renderText(); 
+    updateLiveStats();
+    
+    typingStatus.textContent = 'Нажмите любую клавишу, чтобы начать';
+    textDisplay.focus();
+  }).catch(err => {
+    typingStatus.textContent = 'Не удалось загрузить текст. Попробуйте еще раз.';
+    console.error("Ошибка при старте теста:", err);
+  });
+  state.typed=[]; state.started=false; state.finished=false;
+  state.startTime=null; state.errors=0;
+  state.cursorPos = 0;
+  recordBadge.style.display='none';
+  renderText(); updateLiveStats();
+  typingStatus.textContent='Нажмите любую клавишу, чтобы начать';
   textDisplay.focus();
 }
 
-// ── Keydown ───────────────────────────────────────────────
-function onGlobalKeyDown(e) {
-  // If focus is on a modal input — only highlight key, don't type into test
-  if (e.target.tagName === 'INPUT') {
-    pressKey(e.code, false);
-    return;
-  }
-
-  if (e.key === 'Tab') {
-    e.preventDefault();
-    startNewTest();
-    return;
-  }
-
-  if (state.finished) {
-    pressKey(e.code, false);
-    return;
-  }
-
-  // Backspace
-  if (e.key === 'Backspace') {
-    e.preventDefault();
-    if (state.typed.length > 0) {
-      const last = state.typed.pop();
-      if (!last.correct) state.errors = Math.max(0, state.errors - 1);
-      pressKey('Backspace', false);
-      renderText();
-      updateLiveStats();
+function renderText(){
+  const words = state.text.split(' ');
+  let ci = 0;
+  let cursorRendered = false;
+  const html = words.map((word, wi) => {
+    const charSpans = word.split('').map((ch, i) => {
+      const idx     = ci + i;
+      let cls = 'char-ghost';
+      if(idx < state.typed.length) cls = state.typed[idx].correct ? 'char-correct' : 'char-error';
+      const cursor = (idx === state.cursorPos && !cursorRendered) ? ' char-cursor' : '';
+      if(cursor) cursorRendered = true;
+      return `<span class="${cls}${cursor}">${escapeHtml(ch)}</span>`;
+    }).join('');
+    ci += word.length;
+    let spaceSpan = '';
+    if(wi < words.length-1){
+      const si  = ci;
+      let scls  = 'char-ghost';
+      if(si < state.typed.length) scls = state.typed[si].correct ? 'char-correct' : 'char-error';
+      const sc = (si === state.cursorPos && !cursorRendered) ? ' char-cursor' : '';
+      if(sc) cursorRendered = true;
+      spaceSpan = `<span class="${scls}${sc}">&nbsp;</span>`;
+      ci++;
     }
-    return;
-  }
-
-  // Printable char (length===1) or Space
-  const isPrintable = (e.key.length === 1) && !e.ctrlKey && !e.altKey && !e.metaKey;
-  if (!isPrintable) {
-    pressKey(e.code, false);
-    return;
-  }
-
-  e.preventDefault();
-
-  if (!state.started) {
-    state.started   = true;
-    state.startTime = Date.now();
-    typingStatus.textContent = 'Идёт тест...';
-    state.timerInterval = setInterval(updateLiveStats, 100);
-  }
-
-  const idx      = state.typed.length;
-  const expected = state.text[idx];
-  // KEY FIX: direct character comparison, case-sensitive, exact
-  const correct  = (e.key === expected);
-
-  if (!correct) state.errors++;
-  state.typed.push({ char: e.key, correct });
-
-  pressKey(e.code, !correct);
-  renderText();
-  updateLiveStats();
-
-  if (state.typed.length >= state.text.length) finishTest();
-}
-
-function onGlobalKeyUp(e) {
-  releaseKey(e.code);
-}
-
-// ── Render ────────────────────────────────────────────────
-function renderText() {
-  const html = state.text.split('').map((ch, i) => {
-    let cls = 'char-ghost';
-    if (i < state.typed.length) {
-      cls = state.typed[i].correct ? 'char-correct' : 'char-error';
-    }
-    const cursor  = (i === state.typed.length) ? ' char-cursor' : '';
-    const display = ch === ' ' ? '&nbsp;' : escapeHtml(ch);
-    return `<span class="char ${cls}${cursor}">${display}</span>`;
+    return `<span class="word">${charSpans}</span>${spaceSpan}`;
   }).join('');
   textDisplay.innerHTML = html;
 }
 
-function escapeHtml(c) {
-  return c.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
+function escapeHtml(c){ return c.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-function updateLiveStats() {
-  if (!state.startTime) {
-    liveSpeed.textContent = liveErrors.textContent = liveTime.textContent = liveProgress.textContent = '0';
-    liveAccuracy.textContent = '100';
-    return;
+function updateLiveStats(){
+  if(!state.startTime){
+    liveSpeed.textContent=liveErrors.textContent=liveTime.textContent='0';
+    liveAccuracy.textContent='100'; return;
   }
-  const elapsed  = (Date.now() - state.startTime) / 1000;
-  const typed    = state.typed.length;
-  const valid    = Math.max(0, typed - state.errors);
-  liveSpeed.textContent    = elapsed > 0 ? (valid / elapsed).toFixed(1) : '0';
-  liveAccuracy.textContent = typed > 0 ? Math.max(0, Math.round((valid / typed) * 100)) : 100;
+  const elapsed = (Date.now()-state.startTime)/1000;
+  const typed   = state.typed.length;
+  const valid   = Math.max(0, typed-state.errors);
+  liveSpeed.textContent    = elapsed>0 ? (valid/elapsed).toFixed(2) : '0';
+  liveAccuracy.textContent = typed>0 ? Math.max(0,Math.round((valid/typed)*100)) : 100;
   liveErrors.textContent   = state.errors;
-  liveTime.textContent     = elapsed.toFixed(1);
-  liveProgress.textContent = Math.min(100, Math.round((typed / state.text.length) * 100));
+  liveTime.textContent     = elapsed.toFixed(2);
 }
 
-async function finishTest() {
-  if (state.finished) return;
+async function finishTest(){
+  if(state.finished) return;
   state.finished = true;
-  if (state.timerInterval) clearInterval(state.timerInterval);
-
-  const elapsed  = (Date.now() - state.startTime) / 1000;
-  const typed    = state.typed.length;
-  const valid    = Math.max(0, typed - state.errors);
-  const speed    = elapsed > 0 ? (valid / elapsed).toFixed(2) : '0';
-  const accuracy = typed > 0 ? Math.max(0, Math.round((valid / typed) * 100)) : 100;
-
-  document.getElementById('rSpeed').textContent    = speed + ' сим/с';
-  document.getElementById('rAccuracy').textContent = accuracy + '%';
-  document.getElementById('rErrors').textContent   = state.errors;
-  document.getElementById('rTime').textContent     = elapsed.toFixed(2) + 'с';
-  typingStatus.textContent = 'Тест завершён';
-  resultCard.style.display = 'block';
-  resultCard.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  state.cursorPos = state.text.length;
+  if(state.timerInterval) clearInterval(state.timerInterval);
+  const elapsed = (Date.now()-state.startTime)/1000;
+  const typed   = state.typed.length;
+  const valid   = Math.max(0, typed-state.errors);
+  const speed   = elapsed>0 ? parseFloat((valid/elapsed).toFixed(2)) : 0;
+  typingStatus.textContent = `✓ Готово — ${speed} сим/сек`;
+  if(speed > state.prevMaxSpeed) recordBadge.style.display='inline-flex';
 
   const endpoint = state.currentToken ? '/typing/submit' : '/typing/guest';
-  const headers  = { 'Content-Type':'application/json' };
-  if (state.currentToken) headers['Authorization'] = 'Bearer ' + state.currentToken;
-  try {
-    const res = await fetch(endpoint, {
+  const headers  = {'Content-Type':'application/json'};
+  if(state.currentToken) headers['Authorization'] = 'Bearer '+state.currentToken;
+  try{
+    const res = await fetch(endpoint,{
       method:'POST', headers,
-      body: JSON.stringify({ text: state.typed.map(t=>t.char).join(''), time: elapsed*1000, errors: state.errors }),
+      body:JSON.stringify({text:state.typed.map(t=>t.char).join(''), time:elapsed*1000, errors:state.errors}),
     });
-    if (res.ok && state.currentToken) {
-      const data = await res.json();
-      if (data.max_typing_speed && parseFloat(speed) >= data.max_typing_speed)
-        document.getElementById('resultRecord').style.display = 'block';
+    if(res.ok && state.currentToken){
+      const d = await res.json();
+      state.prevMaxSpeed = Math.max(state.prevMaxSpeed, d.max_typing_speed||0);
     }
-  } catch(err) { console.warn('API submit failed:', err); }
+  }catch(e){ console.warn('Submit failed:',e); }
 }
 
-// ── Keyboard visual ───────────────────────────────────────
+/* ══════════════════════════════════════════════════════════
+   KEYBOARD VISUAL
+   ══════════════════════════════════════════════════════════ */
 const CODE_MAP = {
   'Backquote':'`','Digit1':'1','Digit2':'2','Digit3':'3','Digit4':'4',
   'Digit5':'5','Digit6':'6','Digit7':'7','Digit8':'8','Digit9':'9',
@@ -238,134 +390,156 @@ const CODE_MAP = {
   'Insert':'Insert','Home':'Home','PageUp':'PageUp',
   'Delete':'Delete','End':'End','PageDown':'PageDown',
   'ArrowUp':'ArrowUp','ArrowLeft':'ArrowLeft','ArrowDown':'ArrowDown','ArrowRight':'ArrowRight',
-  'NumLock':'NumLock','NumpadDivide':'/','NumpadMultiply':'*','NumpadSubtract':'NumpadSubtract',
+  'NumLock':'NumLock','NumpadDivide':'NumpadDivide','NumpadMultiply':'NumpadMultiply',
+  'NumpadSubtract':'NumpadSubtract',
   'Numpad7':'Numpad7','Numpad8':'Numpad8','Numpad9':'Numpad9','NumpadAdd':'NumpadAdd',
   'Numpad4':'Numpad4','Numpad5':'Numpad5','Numpad6':'Numpad6',
   'Numpad1':'Numpad1','Numpad2':'Numpad2','Numpad3':'Numpad3','NumpadEnter':'NumpadEnter',
   'Numpad0':'Numpad0','NumpadDecimal':'NumpadDecimal',
 };
 
-function getKeyEl(code) {
-  const dataKey = CODE_MAP[code] || code;
-  // CSS.escape handles special chars like space, backslash
-  return document.querySelector(`.key[data-key="${CSS.escape(dataKey)}"]`);
+function getKeyEl(code){
+  const dk = CODE_MAP[code]||code;
+  return document.querySelector(`.key[data-key="${CSS.escape(dk)}"]`);
+}
+function pressKey(code, isError){
+  const el = getKeyEl(code); if(!el) return;
+  el.classList.remove('pressed','pressed-error');
+  void el.offsetWidth;
+  el.classList.add(isError?'pressed-error':'pressed');
+}
+function releaseKey(code){
+  const el = getKeyEl(code); if(!el) return;
+  el.classList.remove('pressed','pressed-error');
 }
 
-function pressKey(code, isError) {
-  const el = getKeyEl(code);
-  if (!el) return;
-  el.classList.remove('pressed', 'pressed-error');
-  void el.offsetWidth; // restart animation
-  el.classList.add(isError ? 'pressed-error' : 'pressed');
+/* ══════════════════════════════════════════════════════════
+   AUTH
+   ══════════════════════════════════════════════════════════ */
+function checkTokenInUrl(){
+  const p=new URLSearchParams(window.location.search), t=p.get('token');
+  if(t){ localStorage.setItem('tm_token',t); window.history.replaceState({},'','/'); }
 }
-
-function releaseKey(code) {
-  const el = getKeyEl(code);
-  if (!el) return;
-  el.classList.remove('pressed', 'pressed-error');
+async function loadUserFromStorage(){
+  const token=localStorage.getItem('tm_token'); if(!token) return;
+  state.currentToken=token;
+  try{
+    const res=await fetch('/auth/me',{headers:{'Authorization':'Bearer '+token}});
+    if(res.ok){ const u=await res.json(); setLoggedIn(u,token); state.prevMaxSpeed=u.max_typing_speed||0; }
+    else{ localStorage.removeItem('tm_token'); state.currentToken=null; }
+  }catch(e){}
 }
-
-// ── Auth ──────────────────────────────────────────────────
-function checkTokenInUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const token  = params.get('token');
-  if (token) { localStorage.setItem('tm_token', token); window.history.replaceState({}, '', '/'); }
+function setLoggedIn(user,token){
+  state.currentUser=user; state.currentToken=token;
+  authArea.style.display='none'; userArea.style.display='flex';
+  document.getElementById('btnStats').style.display='inline-block';
+  document.getElementById('userName').textContent=user.username||'Пользователь';
+  document.getElementById('userAvatar').textContent=(user.username||'U')[0].toUpperCase();
 }
-
-async function loadUserFromStorage() {
-  const token = localStorage.getItem('tm_token');
-  if (!token) return;
-  state.currentToken = token;
-  try {
-    const res = await fetch('/auth/me', { headers: {'Authorization':'Bearer '+token} });
-    if (res.ok) setLoggedIn(await res.json(), token);
-    else localStorage.removeItem('tm_token');
-  } catch {}
-}
-
-function setLoggedIn(user, token) {
-  state.currentUser = user; state.currentToken = token;
-  authArea.style.display = 'none';
-  userArea.style.display = 'flex';
-  document.getElementById('btnStats').style.display = 'inline-block';
-  document.getElementById('userName').textContent   = user.username || 'Пользователь';
-  document.getElementById('userAvatar').textContent = (user.username||'U')[0].toUpperCase();
-}
-
-function logout() {
+function logout(){
   localStorage.removeItem('tm_token');
-  state.currentToken = null; state.currentUser = null;
-  authArea.style.display = 'flex';
-  userArea.style.display = 'none';
-  document.getElementById('btnStats').style.display = 'none';
+  state.currentToken=null; state.currentUser=null; state.prevMaxSpeed=0;
+  authArea.style.display='flex'; userArea.style.display='none';
+  document.getElementById('btnStats').style.display='none';
 }
 
-function openAuthModal(tab) {
-  authModal.style.display = 'block'; statsModal.style.display = 'none';
+function openAuthModal(tab){
+  modalOpen=true;
+  authModal.style.display='block'; statsModal.style.display='none';
   modalOverlay.classList.add('open'); switchTab(tab);
+  setTimeout(()=>{
+    const inp = tab==='login'
+      ? document.getElementById('loginUsername')
+      : document.getElementById('regUsername');
+    inp && inp.focus();
+  }, 50);
 }
-function closeModal() { modalOverlay.classList.remove('open'); }
-
-function switchTab(tab) {
-  document.getElementById('formLogin').style.display    = tab==='login'    ? 'block' : 'none';
-  document.getElementById('formRegister').style.display = tab==='register' ? 'block' : 'none';
+function closeModal(){
+  modalOpen=false;
+  modalOverlay.classList.remove('open');
+  textDisplay.focus();
+}
+function switchTab(tab){
+  document.getElementById('formLogin').style.display    = tab==='login'    ?'block':'none';
+  document.getElementById('formRegister').style.display = tab==='register' ?'block':'none';
   document.getElementById('tabLogin').classList.toggle('active',    tab==='login');
   document.getElementById('tabRegister').classList.toggle('active', tab==='register');
-  document.getElementById('loginError').textContent = '';
-  document.getElementById('regError').textContent   = '';
+  document.getElementById('loginError').textContent='';
+  document.getElementById('regError').textContent='';
 }
 
-async function doLogin() {
-  const username = document.getElementById('loginUsername').value.trim();
-  const password = document.getElementById('loginPassword').value;
-  const errEl    = document.getElementById('loginError');
-  if (!username || !password) { errEl.textContent = 'Заполните все поля'; return; }
-  try {
-    const res  = await fetch('/auth/token', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
-    const data = await res.json();
-    if (!res.ok) { errEl.textContent = data.detail||'Ошибка входа'; return; }
-    localStorage.setItem('tm_token', data.access_token);
-    state.currentToken = data.access_token;
-    const mr = await fetch('/auth/me', {headers:{'Authorization':'Bearer '+data.access_token}});
-    if (mr.ok) setLoggedIn(await mr.json(), data.access_token);
+async function doLogin(){
+  const u   = document.getElementById('loginUsername').value.trim();
+  const p   = document.getElementById('loginPassword').value;
+  const err = document.getElementById('loginError');
+  if(!u||!p){ err.textContent='Заполните все поля'; return; }
+  err.textContent='Вход...';
+  try{
+    const res = await fetch('/auth/token',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:u,password:p}),
+    });
+    let d;
+    try{ d=await res.json(); } catch(e){ err.textContent='Ошибка сервера'; return; }
+    if(!res.ok){ err.textContent=d.detail||'Неверный логин или пароль'; return; }
+    localStorage.setItem('tm_token',d.access_token);
+    state.currentToken=d.access_token;
+    const mr=await fetch('/auth/me',{headers:{'Authorization':'Bearer '+d.access_token}});
+    if(mr.ok){ const usr=await mr.json(); setLoggedIn(usr,d.access_token); state.prevMaxSpeed=usr.max_typing_speed||0; }
     closeModal();
-  } catch { errEl.textContent = 'Ошибка соединения'; }
+  }catch(e){ err.textContent='Ошибка соединения с сервером'; }
 }
 
-async function doRegister() {
-  const username = document.getElementById('regUsername').value.trim();
-  const email    = document.getElementById('regEmail').value.trim();
-  const password = document.getElementById('regPassword').value;
-  const errEl    = document.getElementById('regError');
-  if (!username||!password) { errEl.textContent='Заполните обязательные поля'; return; }
-  if (password.length < 4)  { errEl.textContent='Пароль минимум 4 символа'; return; }
-  try {
-    const body = {username,password}; if (email) body.email=email;
-    const res  = await fetch('/auth/register', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const data = await res.json();
-    if (!res.ok) { errEl.textContent=data.detail||'Ошибка регистрации'; return; }
-    const lr = await fetch('/auth/token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
-    const ld = await lr.json();
-    if (lr.ok) {
-      localStorage.setItem('tm_token', ld.access_token);
-      state.currentToken = ld.access_token;
-      const mr = await fetch('/auth/me',{headers:{'Authorization':'Bearer '+ld.access_token}});
-      if (mr.ok) setLoggedIn(await mr.json(), ld.access_token);
+async function doRegister(){
+  const u   = document.getElementById('regUsername').value.trim();
+  const em  = document.getElementById('regEmail').value.trim();
+  const p   = document.getElementById('regPassword').value;
+  const err = document.getElementById('regError');
+  if(!u||!p){ err.textContent='Заполните обязательные поля'; return; }
+  if(u.length<3||u.length>20){ err.textContent='Имя: 3–20 символов'; return; }
+  if(!/^[a-zA-Z0-9_]+$/.test(u)){ err.textContent='Имя: только латиница, цифры, _'; return; }
+  if(p.length<4){ err.textContent='Пароль минимум 4 символа'; return; }
+  err.textContent='Регистрация...';
+  try{
+    const body={username:u,password:p}; if(em) body.email=em;
+    const res = await fetch('/auth/register',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body),
+    });
+    let d;
+    try{ d=await res.json(); } catch(e){ err.textContent='Ошибка сервера (не JSON)'; return; }
+    if(!res.ok){
+      const msg = typeof d.detail==='string' ? d.detail
+                : Array.isArray(d.detail) ? d.detail.map(x=>x.msg).join('; ')
+                : JSON.stringify(d.detail);
+      err.textContent=msg||'Ошибка регистрации'; return;
+    }
+    // auto-login
+    const lr=await fetch('/auth/token',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:u,password:p}),
+    });
+    let ld; try{ ld=await lr.json(); } catch(e){ closeModal(); return; }
+    if(lr.ok){
+      localStorage.setItem('tm_token',ld.access_token);
+      state.currentToken=ld.access_token;
+      const mr=await fetch('/auth/me',{headers:{'Authorization':'Bearer '+ld.access_token}});
+      if(mr.ok){ const usr=await mr.json(); setLoggedIn(usr,ld.access_token); state.prevMaxSpeed=usr.max_typing_speed||0; }
     }
     closeModal();
-  } catch { errEl.textContent='Ошибка соединения'; }
+  }catch(e){ err.textContent='Ошибка соединения с сервером'; }
 }
 
-async function openStatsModal() {
+async function openStatsModal(){
+  modalOpen=true;
   authModal.style.display='none'; statsModal.style.display='block';
   modalOverlay.classList.add('open');
-  if (!state.currentToken) return;
-  try {
-    const res = await fetch('/typing/stats',{headers:{'Authorization':'Bearer '+state.currentToken}});
-    if (res.ok) {
-      const d = await res.json();
-      document.getElementById('smMaxSpeed').textContent = d.max_typing_speed?.toFixed(2)||'—';
-      document.getElementById('smTotal').textContent    = d.total_tests||'0';
+  if(!state.currentToken) return;
+  try{
+    const res=await fetch('/typing/stats',{headers:{'Authorization':'Bearer '+state.currentToken}});
+    if(res.ok){ const d=await res.json();
+      document.getElementById('smMaxSpeed').textContent=d.max_typing_speed?.toFixed(2)||'—';
+      document.getElementById('smTotal').textContent=d.total_tests||'0';
     }
-  } catch {}
+  }catch(e){}
 }

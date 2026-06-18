@@ -1,10 +1,8 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
-from sqlalchemy import select
-from datetime import timedelta
 import httpx
 from urllib.parse import urlencode
 from os import path
@@ -15,6 +13,7 @@ from app.database import init_db, get_db, User, UserResult
 from app.models import Text, UserAuth, UserCreate, Token, UserResponse, TypingResult, TypingResultGuest
 from app.auth import verify_password, get_password_hash, create_access_token, get_current_user, require_user
 from app.config import get_settings
+from app.getquote import get_random_internet_text_json
 
 settings = get_settings()
 
@@ -205,6 +204,19 @@ def google_callback(
     
     # Редирект на фронтенд с токеном
     return RedirectResponse(url=f"http://localhost:8000?token={jwt_token}")
+
+@app.get("/text/random")
+async def get_random_text_endpoint(min_length: int = Query(30, ge=10, le=500), max_length: int = Query(200, ge=30, le=1000)):
+    quote = get_random_internet_text_json()
+
+    if quote:
+        if len(quote) > max_length:
+            end = quote.rfind('.', min_length, max_length) + 1
+            if end == -1:
+                end = max_length
+            quote = quote[:end]
+        return {"text": quote.strip()}
+    return {"text": "ошибка загрузки"}
 
 @app.post("/typing/submit", response_model=TypingResult)
 def submit(

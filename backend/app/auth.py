@@ -5,6 +5,7 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+from hashlib import sha256
 from app.config import get_settings
 from app.database import get_db, User
 
@@ -13,10 +14,13 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    sha256_hex = sha256(plain_password.encode('utf-8')).hexdigest()
+    return pwd_context.verify(sha256_hex, hashed_password)
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    sha256_hex = sha256(password.encode('utf-8')).hexdigest()
+    return pwd_context.hash(sha256_hex)
+
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()

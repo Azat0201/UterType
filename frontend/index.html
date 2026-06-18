@@ -3,21 +3,29 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TypeMaster</title>
+  <title>UterType</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="static/style.css" />
+  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon2.png">
+<base target="_blank">
 </head>
 <body>
-
 <!-- HEADER -->
 <header class="header">
   <div class="logo">
     <span class="logo-icon">⌨</span>
-    <span class="logo-text">Type<span class="accent">Master</span></span>
+    <span class="logo-text">Uter<span class="accent">Type</span></span>
   </div>
   <nav class="nav">
+    <!-- Sound control — скрытый ползунок -->
+    <div class="sound-control-header">
+      <button class="sound-btn" id="soundToggle" title="Звук">🔊</button>
+      <div class="volume-dropdown">
+        <input type="range" id="volumeSlider" min="0" max="100" value="60" class="vol-slider" />
+      </div>
+    </div>
     <button class="nav-btn" id="btnStats" style="display:none">Статистика</button>
     <div class="auth-area" id="authArea">
       <button class="btn-ghost" id="btnLogin">Войти</button>
@@ -42,19 +50,11 @@
       <button class="modal-tab active" id="tabLogin" onclick="switchTab('login')">Войти</button>
       <button class="modal-tab" id="tabRegister" onclick="switchTab('register')">Регистрация</button>
     </div>
-
-    <!-- LOGIN -->
     <div id="formLogin">
       <h2 class="modal-title">С возвращением</h2>
       <p class="modal-sub">Войдите, чтобы сохранять результаты</p>
-      <div class="field-group">
-        <label>Имя пользователя</label>
-        <input type="text" id="loginUsername" placeholder="username" />
-      </div>
-      <div class="field-group">
-        <label>Пароль</label>
-        <input type="password" id="loginPassword" placeholder="••••••" />
-      </div>
+      <div class="field-group"><label>Имя пользователя</label><input type="text" id="loginUsername" placeholder="username" /></div>
+      <div class="field-group"><label>Пароль</label><input type="password" id="loginPassword" placeholder="••••••" /></div>
       <div class="modal-error" id="loginError"></div>
       <button class="btn-primary full" id="doLogin">Войти</button>
       <div class="divider"><span>или</span></div>
@@ -63,23 +63,12 @@
         Войти через Google
       </a>
     </div>
-
-    <!-- REGISTER -->
     <div id="formRegister" style="display:none">
       <h2 class="modal-title">Создать аккаунт</h2>
       <p class="modal-sub">Начните отслеживать прогресс</p>
-      <div class="field-group">
-        <label>Имя пользователя</label>
-        <input type="text" id="regUsername" placeholder="username" />
-      </div>
-      <div class="field-group">
-        <label>Email <span class="optional">(необязательно)</span></label>
-        <input type="email" id="regEmail" placeholder="you@example.com" />
-      </div>
-      <div class="field-group">
-        <label>Пароль</label>
-        <input type="password" id="regPassword" placeholder="минимум 4 символа" />
-      </div>
+      <div class="field-group"><label>Имя пользователя</label><input type="text" id="regUsername" placeholder="username" /></div>
+      <div class="field-group"><label>Email <span class="optional">(необязательно)</span></label><input type="email" id="regEmail" placeholder="you@example.com" /></div>
+      <div class="field-group"><label>Пароль</label><input type="password" id="regPassword" placeholder="минимум 4 символа" /></div>
       <div class="modal-error" id="regError"></div>
       <button class="btn-primary full" id="doRegister">Создать аккаунт</button>
       <div class="divider"><span>или</span></div>
@@ -95,38 +84,26 @@
     <button class="modal-close" id="statsClose">✕</button>
     <h2 class="modal-title">Ваша статистика</h2>
     <div class="stats-grid-modal">
-      <div class="stat-card-modal">
-        <div class="stat-val-modal" id="smMaxSpeed">—</div>
-        <div class="stat-lbl-modal">Рекорд (сим/с)</div>
-      </div>
-      <div class="stat-card-modal">
-        <div class="stat-val-modal" id="smTotal">—</div>
-        <div class="stat-lbl-modal">Тестов пройдено</div>
-      </div>
+      <div class="stat-card-modal"><div class="stat-val-modal" id="smMaxSpeed">—</div><div class="stat-lbl-modal">Рекорд (сим/с)</div></div>
+      <div class="stat-card-modal"><div class="stat-val-modal" id="smTotal">—</div><div class="stat-lbl-modal">Тестов пройдено</div></div>
     </div>
   </div>
 </div>
 
 <!-- MAIN -->
 <main class="main">
-
-  <!-- TYPING AREA -->
   <section class="typing-section">
     <div class="typing-card">
       <div class="typing-header">
         <div class="typing-meta" id="typingStatus">Нажмите любую клавишу, чтобы начать</div>
         <div class="typing-controls">
+          <div class="record-badge" id="recordBadge" style="display:none">🏆 Новый рекорд!</div>
           <button class="icon-btn" id="btnRestart" title="Перезапустить (Tab)">↺</button>
         </div>
       </div>
 
-      <!-- Text display -->
       <div class="text-display" id="textDisplay" tabindex="0"></div>
 
-      <!-- Hidden input -->
-      <input type="text" id="hiddenInput" class="hidden-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
-
-      <!-- Live stats bar -->
       <div class="live-stats">
         <div class="live-stat">
           <span class="live-val" id="liveSpeed">0</span>
@@ -144,36 +121,7 @@
           <span class="live-val" id="liveTime">0.0</span>
           <span class="live-lbl">секунд</span>
         </div>
-        <div class="live-stat">
-          <span class="live-val" id="liveProgress">0</span>
-          <span class="live-lbl">% готово</span>
-        </div>
       </div>
-    </div>
-
-    <!-- RESULT CARD (hidden until done) -->
-    <div class="result-card" id="resultCard" style="display:none">
-      <h3 class="result-title">✓ Тест завершён</h3>
-      <div class="result-grid">
-        <div class="result-item">
-          <div class="result-val" id="rSpeed">—</div>
-          <div class="result-lbl">Скорость</div>
-        </div>
-        <div class="result-item">
-          <div class="result-val" id="rAccuracy">—</div>
-          <div class="result-lbl">Точность</div>
-        </div>
-        <div class="result-item">
-          <div class="result-val" id="rErrors">—</div>
-          <div class="result-lbl">Ошибок</div>
-        </div>
-        <div class="result-item">
-          <div class="result-val" id="rTime">—</div>
-          <div class="result-lbl">Время</div>
-        </div>
-      </div>
-      <div class="result-record" id="resultRecord" style="display:none">🏆 Новый рекорд!</div>
-      <button class="btn-primary" id="btnNewTest">Новый тест</button>
     </div>
   </section>
 
@@ -181,176 +129,249 @@
   <section class="keyboard-section">
     <div class="keyboard-wrap">
       <div class="keyboard" id="keyboard">
-
-        <!-- Row 0: Function keys -->
-        <div class="kb-row row-fn">
-          <div class="key key-fn" data-key="Escape">Esc</div>
-          <div class="key key-fn key-gap" data-key="F1">F1</div>
-          <div class="key key-fn" data-key="F2">F2</div>
-          <div class="key key-fn" data-key="F3">F3</div>
-          <div class="key key-fn" data-key="F4">F4</div>
-          <div class="key key-fn key-gap" data-key="F5">F5</div>
-          <div class="key key-fn" data-key="F6">F6</div>
-          <div class="key key-fn" data-key="F7">F7</div>
-          <div class="key key-fn" data-key="F8">F8</div>
-          <div class="key key-fn key-gap" data-key="F9">F9</div>
-          <div class="key key-fn" data-key="F10">F10</div>
-          <div class="key key-fn" data-key="F11">F11</div>
-          <div class="key key-fn" data-key="F12">F12</div>
-          <div class="key key-fn key-gap" data-key="PrintScreen">PrtSc</div>
-          <div class="key key-fn" data-key="ScrollLock">ScrLk</div>
-          <div class="key key-fn" data-key="Pause">Pause</div>
-        </div>
-
-        <!-- Main block + numpad wrapper -->
+        <!-- ══ ALL ══ -->
         <div class="kb-main-wrap">
+
+          <!-- main block + FN -->
           <div class="kb-main">
-            <!-- Row 1: Numbers -->
-            <div class="kb-row">
-              <div class="key" data-key="`" data-char="`">`</div>
-              <div class="key" data-key="1" data-char="1">1</div>
-              <div class="key" data-key="2" data-char="2">2</div>
-              <div class="key" data-key="3" data-char="3">3</div>
-              <div class="key" data-key="4" data-char="4">4</div>
-              <div class="key" data-key="5" data-char="5">5</div>
-              <div class="key" data-key="6" data-char="6">6</div>
-              <div class="key" data-key="7" data-char="7">7</div>
-              <div class="key" data-key="8" data-char="8">8</div>
-              <div class="key" data-key="9" data-char="9">9</div>
-              <div class="key" data-key="0" data-char="0">0</div>
-              <div class="key" data-key="-">−</div>
-              <div class="key" data-key="=">=</div>
-              <div class="key key-wide2" data-key="Backspace">⌫</div>
+            <div class="kb-row row-fn">
+              <div class="key" data-key="Escape">Esc</div>
+              <div class="key-spacer-fn"></div>
+              <div class="key" data-key="F1">F1</div>
+              <div class="key" data-key="F2">F2</div>
+              <div class="key" data-key="F3">F3</div>
+              <div class="key" data-key="F4">F4</div>
+              <div class="key-spacer-fn"></div>
+              <div class="key" data-key="F5">F5</div>
+              <div class="key" data-key="F6">F6</div>
+              <div class="key" data-key="F7">F7</div>
+              <div class="key" data-key="F8">F8</div>
+              <div class="key-spacer-fn"></div>
+              <div class="key" data-key="F9">F9</div>
+              <div class="key" data-key="F10">F10</div>
+              <div class="key" data-key="F11">F11</div>
+              <div class="key" data-key="F12">F12</div>
             </div>
-
-            <!-- Row 2: QWERTY -->
+            <!-- numbers — вторые символы сверху -->
             <div class="kb-row">
-              <div class="key key-wide1" data-key="Tab">Tab</div>
-              <div class="key" data-key="q" data-char="q">Q</div>
-              <div class="key" data-key="w" data-char="w">W</div>
-              <div class="key" data-key="e" data-char="e">E</div>
-              <div class="key" data-key="r" data-char="r">R</div>
-              <div class="key" data-key="t" data-char="t">T</div>
-              <div class="key" data-key="y" data-char="y">Y</div>
-              <div class="key" data-key="u" data-char="u">U</div>
-              <div class="key" data-key="i" data-char="i">I</div>
-              <div class="key" data-key="o" data-char="o">O</div>
-              <div class="key" data-key="p" data-char="p">P</div>
-              <div class="key" data-key="[">[</div>
-              <div class="key" data-key="]">]</div>
-              <div class="key key-wide1" data-key="\">\</div>
+              <div class="key k1u" data-key="`">
+                <span class="key-shift">~</span>
+                <span class="key-main">`</span>
+              </div>
+              <div class="key k1u" data-key="1">
+                <span class="key-shift">!</span>
+                <span class="key-main">1</span>
+              </div>
+              <div class="key k1u" data-key="2">
+                <span class="key-shift">@</span>
+                <span class="key-main">2</span>
+              </div>
+              <div class="key k1u" data-key="3">
+                <span class="key-shift">#</span>
+                <span class="key-main">3</span>
+              </div>
+              <div class="key k1u" data-key="4">
+                <span class="key-shift">$</span>
+                <span class="key-main">4</span>
+              </div>
+              <div class="key k1u" data-key="5">
+                <span class="key-shift">%</span>
+                <span class="key-main">5</span>
+              </div>
+              <div class="key k1u" data-key="6">
+                <span class="key-shift">^</span>
+                <span class="key-main">6</span>
+              </div>
+              <div class="key k1u" data-key="7">
+                <span class="key-shift">&</span>
+                <span class="key-main">7</span>
+              </div>
+              <div class="key k1u" data-key="8">
+                <span class="key-shift">*</span>
+                <span class="key-main">8</span>
+              </div>
+              <div class="key k1u" data-key="9">
+                <span class="key-shift">(</span>
+                <span class="key-main">9</span>
+              </div>
+              <div class="key k1u" data-key="0">
+                <span class="key-shift">)</span>
+                <span class="key-main">0</span>
+              </div>
+              <div class="key k1u" data-key="-">
+                <span class="key-shift">_</span>
+                <span class="key-main">-</span>
+              </div>
+              <div class="key k1u" data-key="=">
+                <span class="key-shift">+</span>
+                <span class="key-main">=</span>
+              </div>
+              <div class="key k2u" data-key="Backspace">Bksp</div>
             </div>
-
-            <!-- Row 3: ASDF -->
+            <!-- qwerty -->
             <div class="kb-row">
-              <div class="key key-wide15" data-key="CapsLock">Caps</div>
-              <div class="key" data-key="a" data-char="a">A</div>
-              <div class="key" data-key="s" data-char="s">S</div>
-              <div class="key" data-key="d" data-char="d">D</div>
-              <div class="key" data-key="f" data-char="f">F</div>
-              <div class="key" data-key="g" data-char="g">G</div>
-              <div class="key" data-key="h" data-char="h">H</div>
-              <div class="key" data-key="j" data-char="j">J</div>
-              <div class="key" data-key="k" data-char="k">K</div>
-              <div class="key" data-key="l" data-char="l">L</div>
-              <div class="key" data-key=";">;</div>
-              <div class="key" data-key="'">'</div>
-              <div class="key key-enter" data-key="Enter">Enter</div>
+              <div class="key k15u" data-key="Tab">Tab</div>
+              <div class="key k1u" data-key="q">Q</div>
+              <div class="key k1u" data-key="w">W</div>
+              <div class="key k1u" data-key="e">E</div>
+              <div class="key k1u" data-key="r">R</div>
+              <div class="key k1u" data-key="t">T</div>
+              <div class="key k1u" data-key="y">Y</div>
+              <div class="key k1u" data-key="u">U</div>
+              <div class="key k1u" data-key="i">I</div>
+              <div class="key k1u" data-key="o">O</div>
+              <div class="key k1u" data-key="p">P</div>
+              <div class="key k1u" data-key="[">
+                <span class="key-shift">{</span>
+                <span class="key-main">[</span>
+              </div>
+              <div class="key k1u" data-key="]">
+                <span class="key-shift">}</span>
+                <span class="key-main">]</span>
+              </div>
+              <div class="key k15u" data-key="\">
+                <span class="key-shift">|</span>
+                <span class="key-main">\</span>
+              </div>
             </div>
-
-            <!-- Row 4: ZXCV -->
+            <!-- asdf -->
             <div class="kb-row">
-              <div class="key key-wide2" data-key="ShiftLeft">⇧ Shift</div>
-              <div class="key" data-key="z" data-char="z">Z</div>
-              <div class="key" data-key="x" data-char="x">X</div>
-              <div class="key" data-key="c" data-char="c">C</div>
-              <div class="key" data-key="v" data-char="v">V</div>
-              <div class="key" data-key="b" data-char="b">B</div>
-              <div class="key" data-key="n" data-char="n">N</div>
-              <div class="key" data-key="m" data-char="m">M</div>
-              <div class="key" data-key=",">,</div>
-              <div class="key" data-key=".">.</div>
-              <div class="key" data-key="/">/</div>
-              <div class="key key-wide25" data-key="ShiftRight">Shift ⇧</div>
+              <div class="key k175u" data-key="CapsLock">Caps</div>
+              <div class="key k1u" data-key="a">A</div>
+              <div class="key k1u" data-key="s">S</div>
+              <div class="key k1u" data-key="d">D</div>
+              <div class="key k1u k-homing" data-key="f">F</div>
+              <div class="key k1u" data-key="g">G</div>
+              <div class="key k1u" data-key="h">H</div>
+              <div class="key k1u k-homing" data-key="j">J</div>
+              <div class="key k1u" data-key="k">K</div>
+              <div class="key k1u" data-key="l">L</div>
+              <div class="key k1u" data-key=";">
+                <span class="key-shift">:</span>
+                <span class="key-main">;</span>
+              </div>
+              <div class="key k1u" data-key="'">
+                <span class="key-shift">"</span>
+                <span class="key-main">'</span>
+              </div>
+              <div class="key k225u" data-key="Enter">Enter</div>
             </div>
-
-            <!-- Row 5: Space -->
+            <!-- zxcv -->
             <div class="kb-row">
-              <div class="key key-ctrl" data-key="ControlLeft">Ctrl</div>
-              <div class="key key-mod" data-key="MetaLeft">⌘</div>
-              <div class="key key-mod" data-key="AltLeft">Alt</div>
-              <div class="key key-space" data-key=" "> </div>
-              <div class="key key-mod" data-key="AltRight">Alt</div>
-              <div class="key key-mod" data-key="MetaRight">⌘</div>
-              <div class="key key-mod" data-key="ContextMenu">☰</div>
-              <div class="key key-ctrl" data-key="ControlRight">Ctrl</div>
+              <div class="key k225u" data-key="ShiftLeft">Shift</div>
+              <div class="key k1u" data-key="z">Z</div>
+              <div class="key k1u" data-key="x">X</div>
+              <div class="key k1u" data-key="c">C</div>
+              <div class="key k1u" data-key="v">V</div>
+              <div class="key k1u" data-key="b">B</div>
+              <div class="key k1u" data-key="n">N</div>
+              <div class="key k1u" data-key="m">M</div>
+              <div class="key k1u" data-key=",">
+                <span class="key-shift"></span>
+                <span class="key-main">,</span>
+              </div>
+              <div class="key k1u" data-key=".">
+                <span class="key-shift">></span>
+                <span class="key-main">.</span>
+              </div>
+              <div class="key k1u" data-key="/">
+                <span class="key-shift">?</span>
+                <span class="key-main">/</span>
+              </div>
+              <div class="key k275u" data-key="ShiftRight">Shift</div>
+            </div>
+            <!-- bottom -->
+            <div class="kb-row">
+              <div class="key k125u" data-key="ControlLeft">Ctrl</div>
+              <div class="key k1u" data-key="MetaLeft">Win</div>
+              <div class="key k125u" data-key="AltLeft">Alt</div>
+              <div class="key k725u" data-key=" "></div>
+              <div class="key k125u" data-key="AltRight">Alt</div>
+              <div class="key k1u" data-key="MetaRight">Fn</div>
+              <div class="key k1u" data-key="ContextMenu">Menu</div>
+              <div class="key k125u" data-key="ControlRight">Ctrl</div>
             </div>
           </div>
 
-          <!-- Navigation cluster -->
+          <!-- nav cluster -->
           <div class="kb-nav">
+            <div class="kb-row row-fn">
+              <div class="key" data-key="PrintScreen">PrtSc</div>
+              <div class="key" data-key="ScrollLock">ScrLk</div>
+              <div class="key" data-key="Pause">Pause</div>
+            </div>
+            <!-- PrintScreen, ScrollLock — между F-рядом и основной клавиатурой -->
             <div class="kb-row">
-              <div class="key key-fn" data-key="Insert">Ins</div>
-              <div class="key key-fn" data-key="Home">Home</div>
-              <div class="key key-fn" data-key="PageUp">PgUp</div>
+              <div class="key k1u" data-key="Insert">Ins</div>
+              <div class="key k1u" data-key="Home">Home</div>
+              <div class="key k1u" data-key="PageUp">PgUp</div>
             </div>
             <div class="kb-row">
-              <div class="key key-fn" data-key="Delete">Del</div>
-              <div class="key key-fn" data-key="End">End</div>
-              <div class="key key-fn" data-key="PageDown">PgDn</div>
-            </div>
-            <div class="kb-row" style="margin-top:auto">
-              <div class="key key-fn" style="visibility:hidden"></div>
-              <div class="key key-fn" data-key="ArrowUp">↑</div>
-              <div class="key key-fn" style="visibility:hidden"></div>
+              <div class="key k1u" data-key="Delete">Del</div>
+              <div class="key k1u" data-key="End">End</div>
+              <div class="key k1u" data-key="PageDown">PgDn</div>
             </div>
             <div class="kb-row">
-              <div class="key key-fn" data-key="ArrowLeft">←</div>
-              <div class="key key-fn" data-key="ArrowDown">↓</div>
-              <div class="key key-fn" data-key="ArrowRight">→</div>
+              <div class="key key-invis"></div>
+            </div>
+            <div class="kb-row kb-row-arrow-top">
+              <div class="key k1u key-invis"></div>
+              <div class="key k1u" data-key="ArrowUp">↑</div>
+              <div class="key k1u key-invis"></div>
+            </div>
+            <div class="kb-row">
+              <div class="key k1u" data-key="ArrowLeft">←</div>
+              <div class="key k1u" data-key="ArrowDown">↓</div>
+              <div class="key k1u" data-key="ArrowRight">→</div>
             </div>
           </div>
 
-          <!-- Numpad -->
+          <!-- numpad + LEDS -->
           <div class="kb-numpad">
-            <div class="kb-row">
-              <div class="key key-fn" data-key="NumLock">NumLk</div>
-              <div class="key key-fn" data-key="/">/</div>
-              <div class="key key-fn" data-key="*">*</div>
-              <div class="key key-fn" data-key="NumpadSubtract">−</div>
+            <div class="kb-leds">
+              <div class="kb-led"><div class="led-dot" id="ledNum"></div>Num</div>
+              <div class="kb-led"><div class="led-dot" id="ledCaps"></div>Caps</div>
+              <div class="kb-led"><div class="led-dot" id="ledScroll"></div>Scroll</div>
             </div>
             <div class="kb-row">
-              <div class="key" data-key="Numpad7">7</div>
-              <div class="key" data-key="Numpad8">8</div>
-              <div class="key" data-key="Numpad9">9</div>
-              <div class="key key-numentall" data-key="NumpadAdd">+</div>
+              <div class="key k1u" data-key="NumLock">NmLk</div>
+              <div class="key k1u" data-key="NumpadDivide">/</div>
+              <div class="key k1u" data-key="NumpadMultiply">*</div>
+              <div class="key k1u" data-key="NumpadSubtract">-</div>
             </div>
             <div class="kb-row">
-              <div class="key" data-key="Numpad4">4</div>
-              <div class="key" data-key="Numpad5">5</div>
-              <div class="key" data-key="Numpad6">6</div>
+              <div class="key k1u" data-key="Numpad7">7</div>
+              <div class="key k1u" data-key="Numpad8">8</div>
+              <div class="key k1u" data-key="Numpad9">9</div>
             </div>
             <div class="kb-row">
-              <div class="key" data-key="Numpad1">1</div>
-              <div class="key" data-key="Numpad2">2</div>
-              <div class="key" data-key="Numpad3">3</div>
-              <div class="key key-numentall" data-key="NumpadEnter">↵</div>
+              <div class="key k1u" data-key="Numpad4">4</div>
+              <div class="key k1u" data-key="Numpad5">5</div>
+              <div class="key k1u" data-key="Numpad6">6</div>
+              <div class="key k1u k2u-tall" data-key="NumpadAdd">+</div>
             </div>
             <div class="kb-row">
-              <div class="key key-numzero" data-key="Numpad0">0</div>
-              <div class="key" data-key="NumpadDecimal">.</div>
+              <div class="key k1u" data-key="Numpad1">1</div>
+              <div class="key k1u" data-key="Numpad2">2</div>
+              <div class="key k1u" data-key="Numpad3">3</div>
+            </div>
+            <div class="kb-row">
+              <div class="key k2u" data-key="Numpad0">0</div>
+              <div class="key k1u" data-key="NumpadDecimal">.</div>
+              <div class="key k1u k2u-tall" data-key="NumpadEnter">↵</div>
             </div>
           </div>
-        </div>
-      </div>
+
+        </div><!-- /kb-main-wrap -->
+      </div><!-- /keyboard -->
     </div>
-    <p class="kb-hint">Клавиши подсвечиваются при нажатии</p>
   </section>
 
 </main>
 
 <footer class="footer">
-  <span>TypeMaster © 2025</span>
+  <span>UterType © 2026</span>
+  <span class="footer-made">made by forgeres</span>
 </footer>
 
 <script src="static/app.js"></script>
