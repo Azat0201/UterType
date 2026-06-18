@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/auth/google/callback" 
     DEBUG: bool = True
     ALLOWED_ORIGINS: str = "http://localhost:8000"
+    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/typemaster"
     
     class Config:
         env_file = ".env"

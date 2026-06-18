@@ -24,7 +24,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="TypeMaster API", version="1.0.0")
-app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
 origins = settings.ALLOWED_ORIGINS.split(",")
 app.add_middleware(
