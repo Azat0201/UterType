@@ -36,9 +36,7 @@ app.add_middleware(
 
 @app.get("/")
 async def read_root():
-    path_to_html = path.join("frontend", "index.html")
-    with open(path_to_html, "r", encoding="utf-8") as file:
-        return HTMLResponse(content=file.read())
+    return {"status": "Backend is running successfully!"}
 
 @app.on_event("startup")
 async def startup():
