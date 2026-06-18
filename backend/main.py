@@ -13,7 +13,7 @@ from app.database import init_db, get_db, User, UserResult
 from app.models import Text, UserAuth, UserCreate, Token, UserResponse, TypingResult, TypingResultGuest
 from app.auth import verify_password, get_password_hash, create_access_token, get_current_user, require_user
 from app.config import get_settings
-from backend.app.gettext import get_text_from_db
+from app.gettext import get_text_from_db
 
 settings = get_settings()
 
