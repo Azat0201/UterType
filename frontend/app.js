@@ -13,6 +13,8 @@ let state = {
 /* ── LED state ── */
 const leds = { caps:false, num:true, scroll:false };
 
+const API_BASE = "https://utertype.onrender.com"
+
 /* ── Sound ── */
 let audioCtx = null;
 let soundOn  = true;
@@ -101,7 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function fetchRandomText() {
   try {
-    const response = await fetch('/text/random');
+    const response = await fetch(API_BASE + '/text/random');
     if (response.ok) {
       const data = await response.json();
       return data.text;
@@ -424,7 +426,7 @@ async function loadUserFromStorage(){
   const token=localStorage.getItem('tm_token'); if(!token) return;
   state.currentToken=token;
   try{
-    const res=await fetch('/auth/me',{headers:{'Authorization':'Bearer '+token}});
+    const res=await fetch(API_BASE + '/auth/me',{headers:{'Authorization':'Bearer '+token}});
     if(res.ok){ const u=await res.json(); setLoggedIn(u,token); state.prevMaxSpeed=u.max_typing_speed||0; }
     else{ localStorage.removeItem('tm_token'); state.currentToken=null; }
   }catch(e){}
@@ -475,7 +477,7 @@ async function doLogin(){
   if(!u||!p){ err.textContent='Заполните все поля'; return; }
   err.textContent='Вход...';
   try{
-    const res = await fetch('/auth/token',{
+    const res = await fetch(API_BASE + '/auth/token',{
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({username:u,password:p}),
     });
@@ -484,7 +486,7 @@ async function doLogin(){
     if(!res.ok){ err.textContent=d.detail||'Неверный логин или пароль'; return; }
     localStorage.setItem('tm_token',d.access_token);
     state.currentToken=d.access_token;
-    const mr=await fetch('/auth/me',{headers:{'Authorization':'Bearer '+d.access_token}});
+    const mr=await fetch(API_BASE + '/auth/me',{headers:{'Authorization':'Bearer '+d.access_token}});
     if(mr.ok){ const usr=await mr.json(); setLoggedIn(usr,d.access_token); state.prevMaxSpeed=usr.max_typing_speed||0; }
     closeModal();
   }catch(e){ err.textContent='Ошибка соединения с сервером'; }
@@ -502,7 +504,7 @@ async function doRegister(){
   err.textContent='Регистрация...';
   try{
     const body={username:u,password:p}; if(em) body.email=em;
-    const res = await fetch('/auth/register',{
+    const res = await fetch(API_BASE + '/auth/register',{
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify(body),
     });
@@ -515,7 +517,7 @@ async function doRegister(){
       err.textContent=msg||'Ошибка регистрации'; return;
     }
     // auto-login
-    const lr=await fetch('/auth/token',{
+    const lr=await fetch(API_BASE + '/auth/token',{
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({username:u,password:p}),
     });
@@ -523,7 +525,7 @@ async function doRegister(){
     if(lr.ok){
       localStorage.setItem('tm_token',ld.access_token);
       state.currentToken=ld.access_token;
-      const mr=await fetch('/auth/me',{headers:{'Authorization':'Bearer '+ld.access_token}});
+      const mr=await fetch(API_BASE + '/auth/me',{headers:{'Authorization':'Bearer '+ld.access_token}});
       if(mr.ok){ const usr=await mr.json(); setLoggedIn(usr,ld.access_token); state.prevMaxSpeed=usr.max_typing_speed||0; }
     }
     closeModal();
@@ -536,7 +538,7 @@ async function openStatsModal(){
   modalOverlay.classList.add('open');
   if(!state.currentToken) return;
   try{
-    const res=await fetch('/typing/stats',{headers:{'Authorization':'Bearer '+state.currentToken}});
+    const res=await fetch(API_BASE + '/typing/stats',{headers:{'Authorization':'Bearer '+state.currentToken}});
     if(res.ok){ const d=await res.json();
       document.getElementById('smMaxSpeed').textContent=d.max_typing_speed?.toFixed(2)||'—';
       document.getElementById('smTotal').textContent=d.total_tests||'0';

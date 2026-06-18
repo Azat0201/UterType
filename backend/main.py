@@ -13,7 +13,7 @@ from app.database import init_db, get_db, User, UserResult
 from app.models import Text, UserAuth, UserCreate, Token, UserResponse, TypingResult, TypingResultGuest
 from app.auth import verify_password, get_password_hash, create_access_token, get_current_user, require_user
 from app.config import get_settings
-from app.getquote import get_random_internet_text_json
+from backend.app.gettext import get_text_from_db
 
 settings = get_settings()
 
@@ -200,20 +200,11 @@ def google_callback(
     jwt_token = create_access_token(data={"sub": str(user.id)})
     
     # Редирект на фронтенд с токеном
-    return RedirectResponse(url=f"http://localhost:8000?token={jwt_token}")
+    return RedirectResponse(url=f"{settings.FRONTEND_URL}?token={jwt_token}")
 
 @app.get("/text/random")
-async def get_random_text_endpoint(min_length: int = Query(30, ge=10, le=500), max_length: int = Query(200, ge=30, le=1000)):
-    quote = get_random_internet_text_json()
-
-    if quote:
-        if len(quote) > max_length:
-            end = quote.rfind('.', min_length, max_length) + 1
-            if end == -1:
-                end = max_length
-            quote = quote[:end]
-        return {"text": quote.strip()}
-    return {"text": "ошибка загрузки"}
+async def get_text():
+    return {"text": get_text_from_db()}
 
 @app.post("/typing/submit", response_model=TypingResult)
 def submit(
